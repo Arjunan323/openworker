@@ -4416,12 +4416,13 @@ class SessionManager:
         from ..permissions import WRITE_TOOLS
 
         name_allowed = task.name_allowed_tools()
+        is_auto = getattr(task, "auto_approve", False) or "*" in name_allowed
 
         async def approver(request):
-            # Unattended: auto-allow the deliverable writes (path-scoped to the task
+            # Unattended: auto-allow if task is auto_approved, deliverable writes (path-scoped to the task
             # workspace) + tools the task allows BY NAME (legacy entries). Target-bound
             # rules never reach here — the permission engine matched them already.
-            if request.tool_name in WRITE_TOOLS or request.tool_name in name_allowed:
+            if is_auto or request.tool_name in WRITE_TOOLS or request.tool_name in name_allowed:
                 return ApprovalOutcome.ONCE
             # Anything else parks in the Inbox and suspends the run (§25 graceful
             # degradation — an ungranted automation still works, it just asks). The item
@@ -4447,6 +4448,8 @@ class SessionManager:
         """Apply a task's standing allowances to an engine: target-bound rules feed the
         permission engine's matcher (connector tools included — the target binding is the
         safety); name-only legacy entries keep their session-allowlist behavior."""
+        if getattr(task, "auto_approve", False) or "*" in task.name_allowed_tools():
+            engine.permissions.mode = Mode.BYPASS_APPROVALS
         engine.permissions.task_rules = task.standing_rules()
         for tool in task.name_allowed_tools():
             engine.permissions.allow_tool_for_session(tool)
@@ -4454,11 +4457,12 @@ class SessionManager:
     def _build_task_engine(self, task, *, session_id: str) -> TurnEngine:
         ag = get_agent(task.agent)
         Path(task.workspace).mkdir(parents=True, exist_ok=True)
+        is_auto = getattr(task, "auto_approve", False) or "*" in task.name_allowed_tools()
         engine = build_engine(
             agent=ag,
             workspace=task.workspace,
             model=task.model or self.model,
-            mode=Mode.INTERACTIVE,
+            mode=Mode.BYPASS_APPROVALS if is_auto else Mode.INTERACTIVE,
             approver=self._scheduled_approver(task, session_id),
             provider=self.provider,
             memory_store=self.memory_store,
@@ -5069,6 +5073,7 @@ class SessionManager:
             # rendered the grants, the submit IS the consent. Same validation as the
             # agent tool — only target-bound write grants survive.
             always_allowed_tools=grant_entries(payload.get("permissions")),
+            auto_approve=bool(payload.get("auto_approve", True)),
         )
         task.workspace = self._provision_scratch(task.task_session_id)
         self.task_store.save(task)
@@ -5082,6 +5087,8 @@ class SessionManager:
             return {"ok": False, "error": "not found"}
         if "enabled" in changes:
             task.enabled = bool(changes["enabled"])
+        if "auto_approve" in changes:
+            task.auto_approve = bool(changes["auto_approve"])
         if changes.get("instructions") is not None:
             task.instructions = changes["instructions"]
         if changes.get("title") is not None:
