@@ -54,6 +54,13 @@ _CREATE_SCHEMA = {
                     "type": "string",
                     "description": "IANA tz, e.g. 'America/New_York'. Defaults to the machine's local time — pass it only to override.",
                 },
+                "auto_approve": {
+                    "type": "boolean",
+                    "description": (
+                        "Whether to auto-approve all actions during automation runs (default: true). "
+                        "When true, the automation runs fully unattended without asking for user approval on tools, shell, or MCPs."
+                    ),
+                },
                 "permissions": {
                     "type": "array",
                     "description": (
@@ -96,7 +103,7 @@ _UPDATE_SCHEMA = {
     "type": "function",
     "function": {
         "name": "update_scheduled_task",
-        "description": "Enable/disable or edit a scheduled task (its instructions, cron, or title).",
+        "description": "Enable/disable or edit a scheduled task (its instructions, cron, title, or auto_approve).",
         "parameters": {
             "type": "object",
             "properties": {
@@ -105,6 +112,10 @@ _UPDATE_SCHEMA = {
                 "instructions": {"type": "string"},
                 "cron": {"type": "string"},
                 "title": {"type": "string"},
+                "auto_approve": {
+                    "type": "boolean",
+                    "description": "Whether to auto-approve all tools/actions during runs without asking.",
+                },
             },
             "required": ["id"],
         },
@@ -155,7 +166,13 @@ def scheduling_tools(
     default_workspace: str,
 ) -> list[Callable[..., Any]]:
     def create_scheduled_task(
-        title, instructions, cron=None, fire_at=None, timezone="local", permissions=None
+        title,
+        instructions,
+        cron=None,
+        fire_at=None,
+        timezone="local",
+        permissions=None,
+        auto_approve=True,
     ):
         from croniter import croniter
 
@@ -185,6 +202,7 @@ def scheduling_tools(
             origin_session_id=origin.get("session_id", ""),
             agent=origin.get("agent", "cowork"),
             always_allowed_tools=grants,
+            auto_approve=bool(auto_approve),
         )
         store.save(task)
         return {
@@ -195,13 +213,14 @@ def scheduling_tools(
             "next_run": task.next_run,
             "workspace": workspace,
             "always_allowed": grants,
+            "auto_approve": task.auto_approve,
         }
 
     def list_scheduled_tasks():
         return {"tasks": [t.public() for t in store.list()]}
 
     def update_scheduled_task(
-        id, enabled=None, instructions=None, cron=None, title=None
+        id, enabled=None, instructions=None, cron=None, title=None, auto_approve=None
     ):
         from croniter import croniter
 
@@ -219,6 +238,8 @@ def scheduling_tools(
             task.instructions = instructions
         if title is not None:
             task.title = title
+        if auto_approve is not None:
+            task.auto_approve = bool(auto_approve)
         store.save(task)
         return {"ok": True, "task": task.public()}
 

@@ -622,3 +622,44 @@ def test_over_limit_max_tokens_is_dropped_and_retried():
     calls = client.chat.completions.calls
     assert turn.text == "ok" and len(calls) == 2
     assert "max_tokens" not in calls[1]
+
+
+def test_sanitize_orphaned_tool_messages():
+    """An orphaned tool message without preceding assistant tool_calls is converted
+    to a user message so OpenAI's API does not return a 400."""
+    from coworker.providers.openai_provider import _sanitize_openai_messages
+
+    messages = [
+        {"role": "user", "content": "hello"},
+        {"role": "tool", "tool_call_id": "c1", "content": '{"result": "ok"}'},
+    ]
+    sanitized = _sanitize_openai_messages(messages)
+    assert len(sanitized) == 2
+    assert sanitized[0]["role"] == "user"
+    assert sanitized[1]["role"] == "user"
+    assert "Tool result for c1" in sanitized[1]["content"]
+
+
+def test_sanitize_missing_tool_results():
+    """If an assistant message has tool_calls followed by a user message without
+    matching tool results, placeholder tool results are injected."""
+    from coworker.providers.openai_provider import _sanitize_openai_messages
+
+    messages = [
+        {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [
+                {"id": "call_123", "type": "function", "function": {"name": "test", "arguments": "{}"}}
+            ],
+        },
+        {"role": "user", "content": "cancel that, do this instead"},
+    ]
+    sanitized = _sanitize_openai_messages(messages)
+    assert len(sanitized) == 3
+    assert sanitized[0]["role"] == "assistant"
+    assert sanitized[1]["role"] == "tool"
+    assert sanitized[1]["tool_call_id"] == "call_123"
+    assert sanitized[2]["role"] == "user"
+    assert sanitized[2]["content"] == "cancel that, do this instead"
+

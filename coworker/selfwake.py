@@ -14,7 +14,7 @@ from __future__ import annotations
 import json
 import threading
 import uuid
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
@@ -57,9 +57,11 @@ class WakeStore:
         if self.path and self.path.is_file():
             saved = json.loads(self.path.read_text(encoding="utf-8"))
             self.stopped_sessions = set(saved.get("stopped_sessions", []))
+            known = {f.name for f in fields(Wake)}
             for raw in saved.get("wakes", []):
-                w = Wake(**raw)
-                self._wakes[w.id] = w
+                if isinstance(raw, dict):
+                    w = Wake(**{k: v for k, v in raw.items() if k in known})
+                    self._wakes[w.id] = w
             # Older versions accumulated timers. Keep only the newest pending
             # sleep per session while retaining the replaced records for audit.
             newest = {}

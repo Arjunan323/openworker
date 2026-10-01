@@ -590,3 +590,34 @@ def test_engine_events_carry_standing_context(tmp_path):
     # §25 invariant: every auto-allowed call writes an audit entry citing the rule.
     cited = [a for a in audit if a.get("stage") == "auto_allowed"]
     assert cited and "send_message → slack:T1/C1" in cited[0]["reason"]
+
+
+async def test_scheduled_task_auto_approve(tmp_path, monkeypatch):
+    from coworker.server.manager import SessionManager
+
+    monkeypatch.setenv("COWORKER_STATE_DIR", str(tmp_path / "state"))
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    manager = SessionManager(data_dir=tmp_path / "data", provider=_provider())
+    task = _task(workspace=str(ws), agent="cowork", auto_approve=True)
+    manager.task_store.save(task)
+    run = TaskRun(task_id=task.id)
+    manager.task_store.add_run(run)
+
+    # Rebuilt run engine is Mode.BYPASS_APPROVALS when auto_approve=True
+    engine = manager._build_task_engine(task, session_id=run.session_id)
+    assert engine.permissions.mode == Mode.BYPASS_APPROVALS
+
+    # Any tool call (MCP, connector, shell) is allowed without parking in Inbox
+    approver = manager._scheduled_approver(task, run.session_id)
+    req = PermissionRequest(
+        tool_name="mcp__custom__action",
+        arguments={"x": 1},
+        metadata=_Meta(category="mcp"),
+        reason="requires approval",
+        tool_call_id="tc_auto",
+    )
+    outcome = await approver(req)
+    assert outcome is ApprovalOutcome.ONCE
+    assert not manager.inbox.pending(run.session_id)
+

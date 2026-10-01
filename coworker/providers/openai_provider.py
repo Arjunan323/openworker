@@ -117,6 +117,118 @@ def _strip_foreign_sidecars(messages: list[dict[str, Any]]) -> list[dict[str, An
     ]
 
 
+def _sanitize_openai_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Prepare messages for OpenAI chat completions by replaying reasoning, stripping foreign
+    sidecars and strictly enforcing the OpenAI tool-calling wire protocol:
+
+    1. Every assistant message with tool_calls must be IMMEDIATELY followed by
+       tool messages responding to EVERY tool_call_id in tool_calls.
+    2. No user/system/assistant message may be interleaved before all tool_calls
+       of that assistant turn are answered.
+    3. Any missing tool responses (e.g. from cancellations or crashes) are synthesised
+       immediately after the assistant turn.
+    4. Any orphaned tool messages (without a preceding assistant tool_call) are safely
+       converted to user messages so the API does not reject the payload.
+    5. Empty or None tool_calls fields are stripped from assistant messages.
+    """
+    messages = _strip_foreign_sidecars(replay_reasoning(messages))
+    cleaned: list[dict[str, Any]] = []
+    for m in messages:
+        if not isinstance(m, dict):
+            continue
+        msg = dict(m)
+        role = msg.get("role")
+        if role == "assistant":
+            raw_tcs = msg.get("tool_calls")
+            valid_tcs = []
+            if isinstance(raw_tcs, list):
+                for tc in raw_tcs:
+                    if isinstance(tc, dict) and tc.get("id"):
+                        valid_tcs.append({
+                            "id": str(tc.get("id")),
+                            "type": str(tc.get("type") or "function"),
+                            "function": {
+                                "name": str((tc.get("function") or {}).get("name") or "unknown"),
+                                "arguments": (
+                                    json.dumps((tc.get("function") or {}).get("arguments"))
+                                    if isinstance((tc.get("function") or {}).get("arguments"), dict)
+                                    else str((tc.get("function") or {}).get("arguments") or "{}")
+                                ),
+                            },
+                        })
+            if valid_tcs:
+                msg["tool_calls"] = valid_tcs
+            else:
+                msg.pop("tool_calls", None)
+                if msg.get("content") is None:
+                    msg["content"] = ""
+        elif role == "tool":
+            msg["content"] = str(msg.get("content") or "")
+            msg["tool_call_id"] = str(msg.get("tool_call_id") or "")
+        cleaned.append(msg)
+
+    result: list[dict[str, Any]] = []
+    i = 0
+    n = len(cleaned)
+
+    while i < n:
+        msg = cleaned[i]
+        role = msg.get("role")
+
+        if role == "assistant" and msg.get("tool_calls"):
+            tool_calls = msg["tool_calls"]
+            expected_ids = {tc["id"] for tc in tool_calls}
+            result.append(msg)
+            i += 1
+
+            # Collect immediate tool messages answering these tool_calls
+            tool_responses: dict[str, dict[str, Any]] = {}
+            orphaned_during_block: list[dict[str, Any]] = []
+
+            while i < n and cleaned[i].get("role") == "tool":
+                tool_msg = cleaned[i]
+                call_id = tool_msg.get("tool_call_id")
+                if call_id in expected_ids and call_id not in tool_responses:
+                    tool_responses[call_id] = tool_msg
+                else:
+                    orphaned_during_block.append(tool_msg)
+                i += 1
+
+            # Emit a tool response for EVERY tool_call in this assistant message
+            for tc in tool_calls:
+                cid = tc["id"]
+                if cid in tool_responses:
+                    result.append(tool_responses[cid])
+                else:
+                    result.append({
+                        "role": "tool",
+                        "tool_call_id": cid,
+                        "content": '{"error": "tool call was cancelled or interrupted"}',
+                    })
+
+            # Any orphaned tool messages encountered can now safely be emitted as user messages
+            for orphan in orphaned_during_block:
+                cid = orphan.get("tool_call_id") or "unknown"
+                result.append({
+                    "role": "user",
+                    "content": f"[Tool result for {cid}]: {orphan.get('content', '')}",
+                })
+
+        elif role == "tool":
+            cid = msg.get("tool_call_id") or "unknown"
+            result.append({
+                "role": "user",
+                "content": f"[Tool result for {cid}]: {msg.get('content', '')}",
+            })
+            i += 1
+
+        else:
+            result.append(msg)
+            i += 1
+
+    return result
+
+
 _MAX_TOKENS_ERROR = "'max_tokens' is not supported"
 
 # Ceiling, not a spend target — same rationale as the Anthropic provider's default: a
@@ -264,7 +376,7 @@ class OpenAIProvider(ProviderClient):
         plan = self._effort_plan(model, settings)
         kwargs: dict[str, Any] = {
             "model": model,
-            "messages": _strip_foreign_sidecars(replay_reasoning(messages)),
+            "messages": _sanitize_openai_messages(messages),
             **settings,
         }
         if tools:
@@ -347,7 +459,7 @@ class OpenAIProvider(ProviderClient):
         plan = self._effort_plan(model, settings)
         kwargs: dict[str, Any] = {
             "model": model,
-            "messages": _strip_foreign_sidecars(replay_reasoning(messages)),
+            "messages": _sanitize_openai_messages(messages),
             "stream": True,
             # Usage on the final chunk (empty `choices`). Compat servers that reject
             # the option get a one-shot retry without it (_param_fix_retry).

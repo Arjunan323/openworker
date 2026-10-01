@@ -493,7 +493,7 @@ body {
   border: 1px solid var(--line-strong); background: var(--panel); border-radius: 14px;
   padding: 14px 16px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
-.approval-dock { max-width: 760px; margin: 0 auto 10px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08); }
+.approval-dock { max-width: 760px; margin: 0 auto 10px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08); max-height: 75vh; overflow-y: auto; }
 .approval-top { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
 .approval-heading { display: flex; gap: 9px; align-items: center; min-width: 0; }
 .approval-ico {
@@ -565,6 +565,7 @@ body {
 .approval-grants {
   margin-top: 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper);
   padding: 7px 10px; display: flex; flex-direction: column; gap: 5px;
+  max-height: 240px; overflow-y: auto;
 }
 .approval-grant { display: flex; align-items: baseline; gap: 7px; font-size: var(--fs-ui); color: var(--muted); }
 .approval-grant .grant-mark { color: var(--faint); width: 12px; text-align: center; flex: none; }
