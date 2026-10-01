@@ -36,6 +36,19 @@ $Platform = Split-Path -Parent $Here
 $Gui      = Join-Path $Platform "surfaces\gui"
 $Venv     = Join-Path $Platform ".venv"
 $PyInst   = Join-Path $Venv "Scripts\pyinstaller.exe"
+$VenvScripts = Join-Path $Venv "Scripts"
+if (Test-Path $VenvScripts) {
+    $env:PATH = "$VenvScripts;$env:PATH"
+}
+$CargoBin = Join-Path $env:USERPROFILE ".cargo\bin"
+if (Test-Path $CargoBin) {
+    $env:PATH = "$CargoBin;$env:PATH"
+}
+$LibClangNative = Join-Path $Venv "Lib\site-packages\clang\native"
+if (Test-Path $LibClangNative) {
+    $env:LIBCLANG_PATH = $LibClangNative
+    $env:PATH = "$LibClangNative;$env:PATH"
+}
 
 function Require-Cmd($name) {
     if (-not (Get-Command $name -ErrorAction SilentlyContinue)) {
@@ -45,6 +58,7 @@ function Require-Cmd($name) {
 
 Require-Cmd rustc
 Require-Cmd npm
+Require-Cmd cmake
 if (-not (Test-Path $PyInst)) {
     throw "PyInstaller not found at $PyInst. Create the venv and install deps (see header)."
 }

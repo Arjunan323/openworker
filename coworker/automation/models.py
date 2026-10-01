@@ -131,6 +131,7 @@ class ScheduledTask:
     always_allowed_tools: list[str] = field(default_factory=list)
     always_allowed_commands: list[str] = field(default_factory=list)
     enabled: bool = True
+    auto_approve: bool = False
     created_at: float = field(default_factory=_now)
     updated_at: float = field(default_factory=_now)
     next_run: Optional[float] = None  # epoch seconds; computed by the store
@@ -155,7 +156,10 @@ class ScheduledTask:
     def from_dict(cls, d: dict) -> "ScheduledTask":
         d = dict(d)
         d["schedule"] = Schedule.from_dict(d.get("schedule") or {})
-        return cls(**d)
+        from dataclasses import fields as dc_fields
+        valid_fields = {f.name for f in dc_fields(cls)}
+        cleaned = {k: v for k, v in d.items() if k in valid_fields}
+        return cls(**cleaned)
 
     # -- standing rules (§25) --------------------------------------------------
     def standing_rules(self) -> dict[str, set[str]]:
@@ -200,6 +204,7 @@ class ScheduledTask:
             "workspace": self.workspace,
             "agent": self.agent,
             "enabled": self.enabled,
+            "auto_approve": self.auto_approve,
             "next_run": self.next_run,
             "last_run": self.last_run,
             "last_status": self.last_status,
