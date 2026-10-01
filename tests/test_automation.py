@@ -91,6 +91,11 @@ def test_compute_next_run_once_local_is_dst_aware(monkeypatch):
     offset in effect at compute time (the old bug) misfired by the DST delta."""
     import time as _time
 
+    if not hasattr(_time, "tzset"):
+        import pytest
+
+        pytest.skip("time.tzset is not supported on Windows")
+
     monkeypatch.setenv("TZ", "America/New_York")
     _time.tzset()
     try:
