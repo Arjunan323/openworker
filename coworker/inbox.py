@@ -17,7 +17,7 @@ import asyncio
 import json
 import threading
 import uuid
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
@@ -108,9 +108,11 @@ class InboxStore:
     def _load(self) -> None:
         if self.path and self.path.is_file():
             data = json.loads(self.path.read_text(encoding="utf-8"))
+            known = {f.name for f in fields(InboxItem)}
             for raw in data.get("items", []):
-                item = InboxItem(**raw)
-                self._items[item.id] = item
+                if isinstance(raw, dict):
+                    item = InboxItem(**{k: v for k, v in raw.items() if k in known})
+                    self._items[item.id] = item
 
     def _save(self) -> None:
         if not self.path:

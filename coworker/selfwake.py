@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 import threading
 import uuid
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
@@ -42,6 +42,8 @@ class Wake:
     event_key: Optional[str] = None  # for on-event wakes
     note: str = ""
     created_at: str = field(default_factory=lambda: _now().isoformat())
+    cancellation_reason: str = ""
+    context_delivered: bool = False
 
 
 class WakeStore:
@@ -50,11 +52,13 @@ class WakeStore:
         self._lock = threading.Lock()
         self._wakes: dict[str, Wake] = {}
         if self.path and self.path.is_file():
+            known = {f.name for f in fields(Wake)}
             for raw in json.loads(self.path.read_text(encoding="utf-8")).get(
                 "wakes", []
             ):
-                w = Wake(**raw)
-                self._wakes[w.id] = w
+                if isinstance(raw, dict):
+                    w = Wake(**{k: v for k, v in raw.items() if k in known})
+                    self._wakes[w.id] = w
 
     def _save(self) -> None:
         if not self.path:

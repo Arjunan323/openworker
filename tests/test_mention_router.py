@@ -127,6 +127,7 @@ def test_mention_spawns_visible_session_with_thread_grant(tmp_path, monkeypatch)
     target = "slack:C1:1700000010.000100"
     assert mgr.mention_sessions.get(target) == sid
     assert target in mgr._engines[sid].permissions.task_rules["send_message"]
+    assert mgr.unattended.is_unattended(sid) is True
 
     # The opening turn carries the reply contract and went to the new session.
     got_sid, opening, source = captured[-1]

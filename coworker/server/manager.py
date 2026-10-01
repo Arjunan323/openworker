@@ -4856,6 +4856,7 @@ class SessionManager:
         self.mention_sessions.set(
             thread_target, sid, channel=f"{src.platform}:{src.chat_id}"
         )
+        self.set_unattended(sid, True)
         engine.permissions.task_rules.setdefault("send_message", set()).add(
             thread_target
         )
