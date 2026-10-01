@@ -2026,7 +2026,10 @@ export function App() {
         onOpenPersona={(id) => {
           openPersona(id, "session");
         }}
-        onOpenScheduled={() => setSurface("scheduled")}
+        onOpenScheduled={() => {
+          setScheduledOpenId(null);
+          setSurface("scheduled");
+        }}
         onOpenAutomation={(id) => {
           setScheduledOpenId(id);
           setSurface("scheduled");
@@ -2047,6 +2050,7 @@ export function App() {
           onOpenRun={openRunSession}
           onRunNow={runTaskNow}
           initialOpenId={scheduledOpenId}
+          onClearOpenId={() => setScheduledOpenId(null)}
         />
       ) : surface === "settings" ? (
         <SettingsView

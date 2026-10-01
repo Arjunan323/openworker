@@ -62,9 +62,10 @@ interface Props {
   onRunNow: (taskId: string, title?: string) => void;
   // Open directly on a task's detail (set by the run banner's "Back to runs").
   initialOpenId?: string | null;
+  onClearOpenId?: () => void;
 }
 
-export function ScheduledView({ onOpenRun, onRunNow, initialOpenId }: Props) {
+export function ScheduledView({ onOpenRun, onRunNow, initialOpenId, onClearOpenId }: Props) {
   const { t } = useTranslation();
   const [tasks, setTasks] = useState<Automation[]>([]);
   const [openId, setOpenId] = useState<string | null>(initialOpenId ?? null);
@@ -74,7 +75,7 @@ export function ScheduledView({ onOpenRun, onRunNow, initialOpenId }: Props) {
   // The sidebar's Scheduled band can retarget an ALREADY-open Automations surface —
   // initial state alone would ignore the change (UX-023).
   useEffect(() => {
-    if (initialOpenId) setOpenId(initialOpenId);
+    setOpenId(initialOpenId ?? null);
   }, [initialOpenId]);
 
   const refresh = () => getAutomations().then(setTasks).catch(() => setTasks([]));
@@ -112,7 +113,11 @@ export function ScheduledView({ onOpenRun, onRunNow, initialOpenId }: Props) {
     return (
       <TaskDetail
         id={openId}
-        onBack={() => { setOpenId(null); refresh(); }}
+        onBack={() => {
+          setOpenId(null);
+          onClearOpenId?.();
+          refresh();
+        }}
         onOpenRun={onOpenRun}
         onRunNow={onRunNow}
       />
