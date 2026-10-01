@@ -53,6 +53,20 @@ if (-not (Test-Path $PyInst)) {
 $Triple = (& rustc -vV | Select-String '^host:').ToString().Split()[-1]
 $Arch   = $Triple.Split('-')[0]
 
+# Ensure venv Scripts (cmake, pyinstaller, etc.) are in PATH
+$VenvScripts = Join-Path $Venv "Scripts"
+if (Test-Path $VenvScripts) {
+    $env:PATH = "$VenvScripts;" + $env:PATH
+}
+
+if (-not $env:LIBCLANG_PATH) {
+    $ClangNative = Join-Path $Venv "Lib\site-packages\clang\native"
+    if (Test-Path (Join-Path $ClangNative "libclang.dll")) {
+        $env:LIBCLANG_PATH = $ClangNative
+        Write-Host "==> using LIBCLANG_PATH from venv: $ClangNative"
+    }
+}
+
 # A running openworker-server.exe (e.g. a prior sidecar/smoke test) locks the output exe and
 # makes PyInstaller's overwrite fail with Access-is-denied. Stop any before bundling.
 $running = Get-Process -Name "openworker-server" -ErrorAction SilentlyContinue
